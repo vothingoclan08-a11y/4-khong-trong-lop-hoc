@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hành Trình Kỷ Luật Tích Cực</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Thư viện tạo hiệu ứng pháo hoa -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Nunito', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            /* Giao diện rực rỡ với gradient */
+            background: linear-gradient(135deg, #FF9A9E 0%, #FECFEF 99%, #FECFEF 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+        }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.6s ease-out forwards; }
+        
+        @keyframes bounceIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .bounce-in { animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+        @keyframes shakeError {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-5px); }
+            40%, 80% { transform: translateX(5px); }
+        }
+        .shake-error { animation: shakeError 0.4s ease-in-out; }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        /* MCQ Styles */
+        .option-btn { transition: all 0.3s ease; }
+        .option-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .option-correct { background-color: #dcfce7 !important; border-color: #22c55e !important; color: #166534 !important; }
+        .option-wrong { background-color: #fee2e2 !important; border-color: #ef4444 !important; color: #991b1b !important; }
+
+        /* Matching Styles */
+        .match-item { transition: all 0.2s; cursor: pointer; }
+        .match-item:hover:not(.matched) { transform: scale(1.02); }
+        .match-item.selected { background-color: #fef08a; border-color: #eab308; box-shadow: 0 0 0 3px rgba(234,179,8,0.3); transform: scale(1.05); z-index: 10; }
+        .match-item.matched { background-color: #dcfce7; border-color: #22c55e; color: #166534; cursor: default; opacity: 0.9; transform: scale(1);}
+
+        /* Classify Styles */
+        .classify-item { cursor: pointer; transition: all 0.2s; }
+        .classify-item.selected-drag { background-color: #fef08a; border-color: #eab308; transform: scale(1.05) rotate(-2deg); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); z-index: 20;}
+        .dropzone { transition: all 0.3s; cursor: pointer; }
+        .dropzone:hover { background-color: rgba(255,255,255,0.8); }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="text-gray-800 pb-12">
+
+    <!-- Header / Stats -->
+    <header class="bg-white/90 backdrop-blur-md shadow-md sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 py-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h1 class="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-500">
+                    <i class="fa-solid fa-rocket text-purple-500 mr-2"></i>Kỷ Luật Tích Cực
+                </h1>
+                
+                <div class="flex items-center gap-4" id="game-stats" style="display: none;">
+                    <!-- Timer -->
+                    <div class="bg-red-100 text-red-700 px-4 py-2 rounded-xl font-bold flex items-center shadow-inner">
+                        <i class="fa-solid fa-clock mr-2 animate-pulse"></i>
+                        <span id="timer-display" class="text-lg">10:00</span>
+                    </div>
+                    <!-- Score -->
+                    <div class="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-xl font-bold flex items-center shadow-inner">
+                        <i class="fa-solid fa-star mr-2 text-yellow-500"></i>
+                        <span class="text-lg"><span id="score-display">0</span>/100</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Progress bar -->
+            <div class="w-full bg-gray-200 rounded-full h-2 mt-3 overflow-hidden" id="progress-container" style="display: none;">
+                <div id="progress-bar" class="bg-gradient-to-r from-green-400 to-blue-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="app-container" class="max-w-4xl mx-auto px-4 mt-8"></main>
+
+    <script>
+        // --- CẤU HÌNH TRÒ CHƠI ---
+        const TOTAL_TIME = 600; // 10 phút = 600 giây
+        let score = 0;
+        let timeLeft = TOTAL_TIME;
+        let timerInterval;
+        let currentStage = 0;
+
+        // Dữ liệu 4 chặng
+        const stages = [
+            {
+                type: 'intro',
+                content: `
+                    <div class="glass-panel rounded-3xl p-8 md:p-12 text-center animate-fade-in max-w-2xl mx-auto mt-10">
+                        <div class="w-32 h-32 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl text-6xl text-purple-500">
+                            <i class="fa-solid fa-graduation-cap"></i>
+                        </div>
+                        <h2 class="text-3xl md:text-4xl font-black text-gray-800 mb-4">Trường Học 4 Không</h2>
+                        <p class="text-lg text-gray-600 mb-8 font-medium">Bạn có 10 phút để vượt qua 4 chặng thử thách. Mỗi chặng gồm 5 câu hỏi, mỗi câu trả lời đúng được 5 điểm. Hãy chứng minh bạn là một học sinh gương mẫu!</p>
+                        <button onclick="startGame()" class="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold text-xl py-4 px-12 rounded-full shadow-lg transform transition hover:scale-105">
+                            Bắt Đầu Ngay <i class="fa-solid fa-play ml-2"></i>
+                        </button>
+                    </div>
+                `
+            },
+            {
+                type: 'mcq',
+                title: 'Chặng 1: Nhận Biết Vai Trò Lớp Học',
+                desc: 'Hãy chọn đáp án ĐÚNG NHẤT cho 5 câu hỏi trắc nghiệm dưới đây.',
+                questions: [
+                    { q: "Việc tổ chức học tập theo mô hình lớp học mang lại ý nghĩa lớn nhất là gì?", options: ["A. Giúp học sinh ganh đua, tị nạnh nhau", "B. Tăng cường sự đoàn kết, hỗ trợ lẫn nhau trong học tập", "C. Tạo sự chia rẽ giữa các nhóm", "D. Hạn chế sự sáng tạo của cá nhân"], ans: 1 },
+                    { q: "Nếu trường học KHÔNG được tổ chức theo lớp, điều gì dễ xảy ra nhất?", options: ["A. Học sinh học tập tự do và giỏi hơn", "B. Khó khăn trong việc quản lý và hỗ trợ quá trình học tập", "C. Học sinh không cần đi học", "D. Giáo viên nhàn rỗi hơn"], ans: 1 },
+                    { q: "Vai trò cốt lõi của Giáo viên chủ nhiệm đối với lớp học là gì?", options: ["A. Chỉ đến lớp để thu học phí", "B. Là người định hướng, đồng hành và hỗ trợ học sinh", "C. Luôn phạt học sinh khi có lỗi nhỏ nhất", "D. Không có vai trò gì quan trọng"], ans: 1 },
+                    { q: "Kỷ luật tích cực trong trường học được xây dựng dựa trên yếu tố nào?", options: ["A. Sự sợ hãi và hình phạt đòn roi", "B. Sự ép buộc từ phía thầy cô", "C. Sự tự giác, tôn trọng và vì lợi ích tốt nhất cho học sinh", "D. Sự mặc kệ, muốn làm gì thì làm"], ans: 2 },
+                    { q: "Khi lớp vắng giáo viên, ban cán sự lớp cần thể hiện trách nhiệm như thế nào?", options: ["A. Cùng các bạn trong lớp đùa giỡn", "B. Chủ động quản lý trật tự và ôn tập bài", "C. Trốn ra ngoài sân chơi", "D. Ghi tên tất cả mọi người nộp cho giám thị"], ans: 1 }
+                ]
+            },
+            {
+                type: 'match',
+                title: 'Chặng 2: Nối Lợi Ích Của Kỷ Luật',
+                desc: 'Chạm vào 1 ô màu xanh (Hành động) sau đó chạm vào 1 ô màu hồng (Ý nghĩa) tương ứng để ghép nối.',
+                pairs: [
+                    { left: "Giữ trật tự trong giờ học", right: "Giúp cả lớp tập trung, giáo viên giảng dạy hiệu quả" },
+                    { left: "Tự giác ôn bài khi trống tiết", right: "Rèn luyện tính tự lập và duy trì nề nếp" },
+                    { left: "Mặc đúng đồng phục", right: "Tạo sự bình đẳng, gắn kết tập thể lớp" },
+                    { left: "Nhắc nhở bạn khi làm ồn", right: "Bảo vệ môi trường học tập chung của lớp" },
+                    { left: "Giữ gìn vệ sinh lớp học", right: "Bảo vệ sức khỏe và cảnh quan trường học" }
+                ]
+            },
+            {
+                type: 'mcq',
+                title: 'Chặng 3: Xử Lý Tình Huống Kỷ Luật',
+                desc: 'Đọc kỹ các tình huống và chọn cách giải quyết tích cực nhất.',
+                questions: [
+                    { q: "Giáo viên vừa ra khỏi lớp, hai bạn nam cãi nhau lớn tiếng. Em sẽ làm gì?", options: ["A. Cổ vũ cho hai bạn cãi nhau to hơn", "B. Dùng điện thoại quay video đăng lên mạng", "C. Cùng các bạn khuyên ngăn và báo cho ban cán sự lớp", "D. Mặc kệ vì không liên quan đến mình"], ans: 2 },
+                    { q: "Làm thế nào để duy trì kỷ luật khi vắng giáo viên, không đánh giá, không ban cán sự?", options: ["A. Xây dựng môi trường học tập tôn trọng và tự giác", "B. Cử một bạn khỏe nhất lớp đứng canh cửa", "C. Đóng cửa lớp lại rồi thoải mái ngủ", "D. Bầu ngay một ban cán sự mới bằng hình thức oẳn tù tì"], ans: 0 },
+                    { q: "Đâu là biểu hiện của 'Tính tự giác' trong học tập?", options: ["A. Chỉ làm bài tập khi bố mẹ nhắc nhở", "B. Chủ động lên kế hoạch và hoàn thành nhiệm vụ được giao", "C. Nhờ bạn chép bài hộ để nộp cho cô", "D. Chờ đến gần ngày thi mới bắt đầu học"], ans: 1 },
+                    { q: "Nội quy nhà trường được lập ra nhằm mục đích gì?", options: ["A. Gây khó dễ cho học sinh", "B. Trừng phạt những học sinh cá biệt", "C. Thể hiện quyền uy của hiệu trưởng", "D. Tạo ra môi trường giáo dục an toàn, văn minh và hiệu quả"], ans: 3 },
+                    { q: "Để lan tỏa kỷ luật tích cực trong lớp, giáo viên/tập thể nên làm gì?", options: ["A. Nêu gương những học sinh có kỷ luật tốt", "B. Viết kiểm điểm cả lớp", "C. Lập camera giám sát 24/24", "D. Không làm gì cả"], ans: 0 }
+                ]
+            },
+            {
+                type: 'classify',
+                title: 'Chặng 4: Phân Loại Hành Vi',
+                desc: 'Chạm vào 1 thẻ hành vi ở dưới, sau đó chạm vào cột "Tích cực" hoặc "Tiêu cực" để phân loại.',
+                items: [
+                    { id: 'i1', text: "Tích cực phối hợp với GV bộ môn", type: "Tích cực" },
+                    { id: 'i2', text: "Chạy nhảy lung tung khi GV vắng mặt", type: "Tiêu cực" },
+                    { id: 'i3', text: "Lên kế hoạch các hoạt động của lớp", type: "Tích cực" },
+                    { id: 'i4', text: "Chủ động hỗ trợ lẫn nhau trong học tập", type: "Tích cực" },
+                    { id: 'i5', text: "Sử dụng điện thoại chơi game trong giờ", type: "Tiêu cực" }
+                ],
+                categories: [
+                    { name: "Tích cực", color: "text-green-700", bg: "bg-green-100", border: "border-green-300", icon: "fa-check-circle" },
+                    { name: "Tiêu cực", color: "text-red-700", bg: "bg-red-100", border: "border-red-300", icon: "fa-times-circle" }
+                ]
+            }
+        ];
+
+        // --- CÁC HÀM TIỆN ÍCH ---
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function firework() {
+            confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, zIndex: 9999 });
+        }
+
+        // --- QUẢN LÝ TRẠNG THÁI GAME ---
+        function startGame() {
+            document.getElementById('game-stats').style.display = 'flex';
+            document.getElementById('progress-container').style.display = 'block';
+            score = 0;
+            timeLeft = TOTAL_TIME;
+            currentStage = 1;
+            updateHeader();
+            
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer-display').innerText = formatTime(timeLeft);
+                if (timeLeft <= 0) endGame(false);
+            }, 1000);
+
+            renderStage();
+        }
+
+        function updateHeader() {
+            document.getElementById('score-display').innerText = score;
+            const progress = ((currentStage - 1) / 4) * 100;
+            document.getElementById('progress-bar').style.width = `${progress}%`;
+        }
+
+        function checkStageComplete(isComplete) {
+            if (isComplete) {
+                document.getElementById('next-btn').classList.remove('hidden');
+                document.getElementById('next-btn').classList.add('bounce-in');
+            }
+        }
+
+        function proceedNextStage() {
+            currentStage++;
+            if (currentStage > 4) {
+                endGame(true);
+            } else {
+                updateHeader();
+                renderStage();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        function endGame(finished) {
+            clearInterval(timerInterval);
+            document.getElementById('game-stats').style.display = 'none';
+            document.getElementById('progress-container').style.display = 'none';
+            
+            const timeUsed = TOTAL_TIME - timeLeft;
+            const timeString = formatTime(timeUsed);
+            
+            let message = "";
+            let medalIcon = "";
+            if (score === 100) {
+                message = "Xuất sắc tuyệt đối! Bạn là học sinh gương mẫu hoàn hảo.";
+                medalIcon = '<i class="fa-solid fa-medal text-yellow-400"></i>';
+                let endConfetti = setInterval(() => firework(), 800);
+                setTimeout(() => clearInterval(endConfetti), 4000);
+            } else if (score >= 75) {
+                message = "Rất tốt! Bạn hiểu rất rõ về kỷ luật học đường.";
+                medalIcon = '<i class="fa-solid fa-award text-blue-400"></i>';
+                firework();
+            } else if (!finished) {
+                message = "Hết giờ! Đừng buồn, hãy thử lại để làm tốt hơn nhé.";
+                medalIcon = '<i class="fa-solid fa-hourglass-end text-red-400"></i>';
+            } else {
+                message = "Hoàn thành! Hãy ôn lại kiến thức để đạt điểm cao hơn nhé.";
+                medalIcon = '<i class="fa-solid fa-thumbs-up text-green-400"></i>';
+            }
+
+            const html = `
+                <div class="glass-panel rounded-3xl p-8 md:p-12 text-center animate-fade-in max-w-2xl mx-auto mt-10 shadow-2xl">
+                    <div class="text-7xl mb-4">${medalIcon}</div>
+                    <h2 class="text-3xl md:text-4xl font-black text-gray-800 mb-6">TỔNG KẾT HÀNH TRÌNH</h2>
+                    
+                    <div class="grid grid-cols-2 gap-4 mb-8">
+                        <div class="bg-blue-50 p-6 rounded-2xl border-2 border-blue-100">
+                            <div class="text-gray-500 font-bold mb-1">TỔNG ĐIỂM</div>
+                            <div class="text-4xl font-black text-blue-600">${score}/100</div>
+                        </div>
+                        <div class="bg-red-50 p-6 rounded-2xl border-2 border-red-100">
+                            <div class="text-gray-500 font-bold mb-1">THỜI GIAN</div>
+                            <div class="text-4xl font-black text-red-600">${timeString}</div>
+                        </div>
+                    </div>
+                    
+                    <p class="text-xl text-gray-700 mb-8 font-medium">${message}</p>
+                    
+                    <button onclick="location.reload()" class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold py-4 px-10 rounded-full shadow-lg hover:scale-105 transition">
+                        Chơi Lại Từ Đầu <i class="fa-solid fa-rotate-right ml-2"></i>
+                    </button>
+                </div>
+            `;
+            document.getElementById('app-container').innerHTML = html;
+        }
+
+        // --- RENDER GIAO DIỆN CHẶNG ---
+        function renderStage() {
+            const stage = stages[currentStage];
+            const app = document.getElementById('app-container');
+            
+            let html = `
+                <div class="glass-panel rounded-3xl p-6 md:p-8 animate-fade-in shadow-xl mb-10">
+                    <div class="text-center mb-8">
+                        <span class="inline-block px-4 py-1 rounded-full bg-purple-100 text-purple-700 font-bold text-sm mb-3">Thử thách ${currentStage}/4</span>
+                        <h2 class="text-2xl md:text-3xl font-black text-gray-800">${stage.title}</h2>
+                        <p class="text-gray-600 mt-2 font-medium">${stage.desc}</p>
+                    </div>
+                    <div id="game-board"></div>
+                    
+                    <div class="text-center mt-8">
+                        <button id="next-btn" onclick="proceedNextStage()" class="hidden bg-green-500 hover:bg-green-600 text-white font-black py-4 px-12 rounded-full shadow-lg text-lg">
+                            Hoàn Thành Chặng <i class="fa-solid fa-forward ml-2"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            app.innerHTML = html;
+            
+            const board = document.getElementById('game-board');
+            if (stage.type === 'mcq') renderMCQ(stage, board);
+            if (stage.type === 'match') renderMatch(stage, board);
+            if (stage.type === 'classify') renderClassify(stage, board);
+        }
+
+        // --- GAME LOGIC: TRẮC NGHIỆM (MCQ) ---
+        let mcqAnswered = 0;
+        function renderMCQ(stage, board) {
+            mcqAnswered = 0;
+            let html = `<div class="space-y-6">`;
+            stage.questions.forEach((q, qIndex) => {
+                html += `
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100" id="q-container-${qIndex}">
+                        <h3 class="font-bold text-lg mb-4 text-gray-800"><span class="text-purple-600 mr-2">Câu ${qIndex + 1}:</span>${q.q}</h3>
+                        <div class="grid grid-cols-1 gap-3">
+                            ${q.options.map((opt, oIndex) => `
+                                <button id="btn-q${qIndex}-o${oIndex}" onclick="selectMCQ(${qIndex}, ${oIndex}, ${q.ans})" 
+                                    class="option-btn text-left p-4 rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-700 font-medium">
+                                    ${opt}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+            board.innerHTML = html;
+        }
+
+        function selectMCQ(qIndex, selectedOpt, correctOpt) {
+            const container = document.getElementById(`q-container-${qIndex}`);
+            if (container.dataset.answered === 'true') return; // Chặn bấm lần 2
+            container.dataset.answered = 'true';
+            
+            // Xử lý nút
+            const allBtns = container.querySelectorAll('.option-btn');
+            allBtns.forEach(btn => btn.disabled = true);
+            
+            const selectedBtn = document.getElementById(`btn-q${qIndex}-o${selectedOpt}`);
+            const correctBtn = document.getElementById(`btn-q${qIndex}-o${correctOpt}`);
+
+            if (selectedOpt === correctOpt) {
+                selectedBtn.classList.add('option-correct');
+                selectedBtn.innerHTML += ' <i class="fa-solid fa-circle-check float-right text-xl mt-0.5"></i>';
+                score += 5;
+                firework();
+            } else {
+                selectedBtn.classList.add('option-wrong');
+                selectedBtn.innerHTML += ' <i class="fa-solid fa-circle-xmark float-right text-xl mt-0.5"></i>';
+                selectedBtn.classList.add('shake-error');
+                correctBtn.classList.add('option-correct'); // Hiện đáp án đúng
+            }
+            
+            updateHeader();
+            mcqAnswered++;
+            if (mcqAnswered === 5) checkStageComplete(true);
+        }
+
+        // --- GAME LOGIC: GHÉP NỐI (MATCHING) ---
+        let selectedMatchNode = null;
+        let matchedPairs = 0;
+        
+        function renderMatch(stage, board) {
+            matchedPairs = 0;
+            selectedMatchNode = null;
+            
+            const lefts = stage.pairs.map((p, i) => ({text: p.left, id: i, side: 'L'}));
+            const rights = stage.pairs.map((p, i) => ({text: p.right, id: i, side: 'R'}));
+            
+            // Xáo trộn
+            lefts.sort(() => Math.random() - 0.5);
+            rights.sort(() => Math.random() - 0.5);
+
+            let html = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-3" id="match-left">
+                        ${lefts.map(item => `
+                            <div onclick="handleMatch(this, ${item.id}, 'L')" class="match-item bg-blue-50 border-2 border-blue-200 p-4 rounded-xl text-center font-bold text-blue-800 shadow-sm">${item.text}</div>
+                        `).join('')}
+                    </div>
+                    <div class="space-y-3" id="match-right">
+                        ${rights.map(item => `
+                            <div onclick="handleMatch(this, ${item.id}, 'R')" class="match-item bg-pink-50 border-2 border-pink-200 p-4 rounded-xl text-center font-bold text-pink-800 shadow-sm">${item.text}</div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            board.innerHTML = html;
+        }
+
+        function handleMatch(el, id, side) {
+            if (el.classList.contains('matched')) return;
+
+            // Bỏ chọn cùng cột
+            const colId = side === 'L' ? 'match-left' : 'match-right';
+            Array.from(document.getElementById(colId).children).forEach(child => {
+                if(!child.classList.contains('matched')) child.classList.remove('selected');
+            });
+
+            el.classList.add('selected');
+
+            if (!selectedMatchNode) {
+                selectedMatchNode = {el, id, side};
+            } else {
+                if (selectedMatchNode.side === side) {
+                    selectedMatchNode = {el, id, side}; // Đổi ý chọn ô khác cùng cột
+                } else {
+                    // Đã chọn 2 bên, tiến hành kiểm tra
+                    const firstEl = selectedMatchNode.el;
+                    const secondEl = el;
+
+                    if (selectedMatchNode.id === id) {
+                        // Nối đúng
+                        firstEl.classList.replace('selected', 'matched');
+                        secondEl.classList.replace('selected', 'matched');
+                        firstEl.innerHTML += ' <i class="fa-solid fa-check ml-2"></i>';
+                        secondEl.innerHTML += ' <i class="fa-solid fa-check ml-2"></i>';
+                        score += 5;
+                        matchedPairs++;
+                        updateHeader();
+                        firework();
+                        
+                        if (matchedPairs === 5) checkStageComplete(true);
+                    } else {
+                        // Nối sai
+                        firstEl.classList.remove('selected');
+                        secondEl.classList.remove('selected');
+                        firstEl.classList.add('shake-error');
+                        secondEl.classList.add('shake-error');
+                        
+                        setTimeout(() => {
+                            firstEl.classList.remove('shake-error');
+                            secondEl.classList.remove('shake-error');
+                        }, 400);
+                    }
+                    selectedMatchNode = null;
+                }
+            }
+        }
+
+        // --- GAME LOGIC: PHÂN LOẠI (CLASSIFY - Chạm & Chạm) ---
+        let selectedDragItem = null;
+        let classifiedCount = 0;
+
+        function renderClassify(stage, board) {
+            classifiedCount = 0;
+            selectedDragItem = null;
+            
+            const shuffledItems = [...stage.items].sort(() => Math.random() - 0.5);
+
+            let html = `
+                <!-- Khu vực Thẻ -->
+                <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl p-6 mb-8 relative" id="source-zone">
+                    <p class="text-center text-gray-500 font-bold mb-4 absolute top-2 left-0 w-full text-sm">CÁC HÀNH VI CẦN PHÂN LOẠI (Nhấn để chọn)</p>
+                    <div class="flex flex-wrap gap-3 justify-center mt-6">
+                        ${shuffledItems.map(item => `
+                            <div id="${item.id}" data-type="${item.type}" onclick="selectDragItem(this)" class="classify-item bg-white border-2 border-gray-200 px-4 py-3 rounded-xl shadow-sm font-bold text-gray-700">
+                                <i class="fa-solid fa-hand-pointer text-gray-400 mr-2"></i>${item.text}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- Khu vực Cột Đích -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    ${stage.categories.map((cat, idx) => `
+                        <div onclick="dropItem('${cat.name}', 'zone-${idx}')" class="dropzone ${cat.bg} border-2 ${cat.border} rounded-2xl p-4 min-h-[200px] flex flex-col">
+                            <h3 class="font-black text-center ${cat.color} mb-4 text-xl"><i class="fa-solid ${cat.icon} mr-2"></i>${cat.name}</h3>
+                            <div id="zone-${idx}" class="flex-1 space-y-2 flex flex-col items-center"></div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            board.innerHTML = html;
+        }
+
+        function selectDragItem(el) {
+            // Nếu đã được phân loại thì bỏ qua
+            if(el.parentElement.id !== 'source-zone' && el.parentElement.parentElement.id !== 'source-zone') return;
+            
+            // Xóa chọn cũ
+            document.querySelectorAll('.classify-item').forEach(item => item.classList.remove('selected-drag'));
+            
+            if (selectedDragItem === el) {
+                selectedDragItem = null; // Bỏ chọn nếu ấn lại
+            } else {
+                el.classList.add('selected-drag');
+                selectedDragItem = el;
+            }
+        }
+
+        function dropItem(categoryName, zoneId) {
+            if (!selectedDragItem) return; // Chưa chọn thẻ nào
+
+            const itemType = selectedDragItem.dataset.type;
+            
+            if (itemType === categoryName) {
+                // Thả ĐÚNG
+                const zone = document.getElementById(zoneId);
+                selectedDragItem.classList.remove('selected-drag');
+                selectedDragItem.classList.replace('border-gray-200', categoryName === 'Tích cực' ? 'border-green-500' : 'border-red-500');
+                selectedDragItem.classList.add('bg-white');
+                selectedDragItem.onclick = null; // Khóa thẻ lại
+                
+                // Đổi icon
+                selectedDragItem.innerHTML = selectedDragItem.innerHTML.replace('fa-hand-pointer', 'fa-check');
+                
+                zone.appendChild(selectedDragItem);
+                
+                score += 5;
+                classifiedCount++;
+                selectedDragItem = null;
+                updateHeader();
+                firework();
+                
+                if (classifiedCount === 5) checkStageComplete(true);
+            } else {
+                // Thả SAI
+                selectedDragItem.classList.add('shake-error');
+                setTimeout(() => selectedDragItem.classList.remove('shake-error'), 400);
+            }
+        }
+
+        // Khởi tạo hiển thị ban đầu
+        document.getElementById('app-container').innerHTML = stages[0].content;
+    </script>
+</body>
+</html>
